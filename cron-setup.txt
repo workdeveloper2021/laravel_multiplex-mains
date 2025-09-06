@@ -1,0 +1,17 @@
+# Cron Configuration for Multiplex Video Upload System
+# Add these lines to your server's cron with: crontab -e
+
+# Auto-restart queue worker every 5 minutes if not running
+*/5 * * * * cd /var/www/html/v2 && ./auto-start-queue.sh start >/dev/null 2>&1
+
+# Clean up old temporary files every hour
+0 * * * * cd /var/www/html/v2 && find storage/app/public/movies/temp -name "*.mp4" -mtime +1 -delete >/dev/null 2>&1
+
+# Laravel scheduled tasks (if any)
+* * * * * cd /var/www/html/v2 && php artisan schedule:run >> /dev/null 2>&1
+
+# Example usage:
+# 1. Edit cron: crontab -e
+# 2. Add the lines above
+# 3. Save and exit
+# 4. Verify: crontab -l

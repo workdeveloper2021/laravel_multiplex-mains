@@ -1,0 +1,13 @@
+<FilesMatch \.php$>
+    SetHandler "proxy:unix:/run/php/php8.2-fpm.sock|fcgi://localhost/"
+</FilesMatch>
+
+# Increase upload limits for large video files
+php_value upload_max_filesize 2147483648
+php_value post_max_size 2147483648
+php_value max_execution_time 0
+php_value max_input_time 0
+php_value memory_limit 1073741824
+
+# Apache upload limits
+LimitRequestBody 2147483648

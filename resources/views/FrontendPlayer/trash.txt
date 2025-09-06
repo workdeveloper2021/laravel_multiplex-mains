@@ -1,0 +1,280 @@
+<script>
+    // User config
+    const USER = {
+      id: @json(auth()->user()->_id ?? null),
+      email: @json(auth()->user()->email ?? 'Guest'),
+      country: 'IN'
+    };
+
+    // Simple HLS player
+    let hls = null;
+    function playVideo(url, title = '') {
+      const video = document.getElementById('videoPlayer');
+      if (!video || !url) return;
+
+      console.log('Playing:', title, url);
+
+      if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = url;
+        video.play().catch(e => console.warn('Play failed:', e));
+      } else if (window.Hls && Hls.isSupported()) {
+        if (hls) hls.destroy();
+        hls = new Hls();
+        hls.loadSource(url);
+        hls.attachMedia(video);
+        video.play().catch(e => console.warn('Play failed:', e));
+      } else {
+        console.warn('HLS not supported');
+      }
+    }
+
+    // Secure play with subscription check
+    async function playSecure(url, title, vId, isWebseries = false, channelId = '') {
+      if (!USER.id) {
+        alert('Please login first to watch content');
+        return;
+      }
+
+      console.log('Checking subscription for:', { vId, isWebseries, channelId });
+
+      try {
+        // Check subscription
+        let checkUrl;
+        if (isWebseries) {
+          checkUrl = `/api/ott/check-webseries?id=${vId}&user_id=${USER.id}&channel_id=${channelId}&field=_id`;
+        } else {
+          checkUrl = `/api/ott/check-movie?vId=${vId}&user_id=${USER.id}&channel_id=${channelId}&country=${USER.country}`;
+        }
+
+        console.log('Subscription check URL:', checkUrl);
+
+        const subRes = await fetch(checkUrl);
+        const subData = await subRes.json();
+
+        console.log('Subscription response:', subData);
+
+        // Check subscription status from API response
+        if (subData.isSubscribed === false) {
+          // Get isChannel from the main data (not from root level)
+          const movieData = Array.isArray(subData.data) && subData.data.length > 0 ? subData.data[0] : {};
+          const isChannelSubscription = movieData.isChannel === true;
+
+          showPurchaseModal(isChannelSubscription, title, channelId);
+          return;
+        }
+
+        // Play if subscribed (use data from API response)
+        const movieData = Array.isArray(subData.data) && subData.data.length > 0 ? subData.data[0] : {};
+        const playUrl = movieData.video_url || url; // Use API response URL if available
+
+        const secureUrl = `/api/video-manifest?url=${encodeURIComponent(playUrl)}&token=${btoa(JSON.stringify({timestamp: Math.floor(Date.now()/1000)}))}`;
+        playVideo(secureUrl, title);
+
+      } catch (e) {
+        console.warn('Subscription check failed:', e);
+        alert('Failed to verify subscription. Please try again.');
+      }
+    }
+
+    function showPurchaseModal(isChannel, title, channelId = '') {
+      const modal = document.getElementById('purchaseModal');
+      const message = document.getElementById('purchaseMessage');
+      const btn = document.getElementById('purchaseBtn');
+
+      console.log('Showing purchase modal:', { isChannel, title, channelId });
+
+      if (isChannel === true) {
+        message.innerHTML = `
+          <strong>Channel Subscription Required</strong><br><br>
+          Please purchase channel access to watch "<strong>${title}</strong>".<br>
+          <small>Channel ID: ${channelId}</small>
+        `;
+        btn.textContent = 'Buy Channel Access';
+      } else {
+        message.innerHTML = `
+          <strong>Premium Subscription Required</strong><br><br>
+          Please subscribe to a premium plan to watch "<strong>${title}</strong>".<br>
+          <small>Upgrade your account to access all content.</small>
+        `;
+        btn.textContent = 'Subscribe to Plan';
+      }
+
+      modal.style.display = 'flex';
+    }
+
+    // Modal handlers
+    document.getElementById('cancelBtn').addEventListener('click', () => {
+      document.getElementById('purchaseModal').style.display = 'none';
+    });
+    document.getElementById('purchaseBtn').addEventListener('click', () => {
+      window.location.href = '/pricing'; // redirect to purchase
+    });
+
+    // Load home content
+    (async function(){
+      try {
+        console.log('Loading home content...');
+        const res = await fetch(`/api/ott/home?country=${USER.country}`);
+        const json = await res.json();
+
+        console.log('Home API response:', json);
+
+        const featuresData = json?.features_genre_and_movie || [];
+        const latestMovies = json?.latest_movies || [];
+        const latestTvseries = json?.latest_tvseries || [];
+        const container = document.getElementById('contentSections');
+
+        // Helper to get good image
+        const goodImg = (item) => {
+          const u = item.thumbnail_url || item.poster_url || item.image_url;
+          if (!u || u.includes('multiplexplay.com/storage/') || u.includes('example.com')) return '';
+          return u;
+        };
+
+        // Create Feature Genre Sections (main content)
+        featuresData.forEach(genreSection => {
+          const genreName = genreSection.name || genreSection.genre_name || 'Content';
+          const movies = Array.isArray(genreSection.movies) ? genreSection.movies : [];
+          if (movies.length) {
+            createSection(container, genreName, movies, null); // auto-detect from is_tvseries
+          }
+        });
+
+        // Create Latest Movies Section
+        if (latestMovies.length) {
+          createSection(container, 'Latest Movies', latestMovies, false);
+        }
+
+        // Create Latest TV Series Section
+        if (latestTvseries.length) {
+          createSection(container, 'Latest TV Series', latestTvseries, true);
+        }
+
+        function createSection(container, sectionName, items, forceTvseries = null) {
+          if (!items.length) return;
+
+          const section = document.createElement('section');
+          section.className = 'section';
+          section.innerHTML = `
+            <h2>${sectionName}</h2>
+            <p class="muted">Swipe or use arrows to scroll →</p>
+            <div class="row-wrapper" data-row>
+              <button class="arrow left"><i class="fa-solid fa-chevron-left"></i></button>
+              <div class="row"></div>
+              <button class="arrow right"><i class="fa-solid fa-chevron-right"></i></button>
+            </div>
+          `;
+
+          const row = section.querySelector('.row');
+          items.slice(0, 15).forEach(item => {
+            const poster = goodImg(item) || `https://picsum.photos/400/600?random=${Math.floor(Math.random()*1000)}`;
+            const title = item.title || 'Untitled';
+
+            // Auto-detect or force type
+            const isWebseries = forceTvseries !== null ? forceTvseries : (String(item.is_tvseries) === '1');
+            const badge = String(item.is_paid) === '1' ? 'PAID' : (item.video_quality || 'FREE');
+            const m3u8 = item.video_url || item.stream_url;
+
+            // Pick correct IDs for API calls
+            const vId = item._id || item.id || item.videos_id || item.numeric_videos_id;
+            const channelId = item.channel_id || '';
+
+            console.log('Card data:', { title, vId, channelId, isWebseries, m3u8 });
+
+            const card = document.createElement('article');
+            card.className = 'card';
+            card.innerHTML = `
+              <div class="poster">
+                <img src="${poster}" alt="${title}">
+                <span class="badge">${badge}</span>
+              </div>
+              <div class="meta">
+                <div class="title">${title}</div>
+                <div class="sub">${isWebseries ? 'Series' : 'Movie'}</div>
+                <div class="actions">
+                  <button class="play"><i class="fa-solid fa-play"></i> ${isWebseries ? 'Watch' : 'Play'}</button>
+                  <button class="add"><i class="fa-solid fa-plus"></i></button>
+                </div>
+              </div>`;
+
+            card.querySelector('.play').addEventListener('click', ()=> {
+              if (m3u8 && vId) {
+                playSecure(m3u8, title, vId, isWebseries, channelId);
+              } else {
+                console.warn('Missing data for:', title, { m3u8, vId, channelId });
+                alert('Video data incomplete. Please try another video.');
+              }
+            });
+
+            row.appendChild(card);
+          });
+
+          container.appendChild(section);
+        }
+
+        // Setup row navigation
+        setupRowNavigation();
+
+        // Auto-play first content
+        if (featuresData[0] && featuresData[0].movies && featuresData[0].movies[0]) {
+          const first = featuresData[0].movies[0];
+          const firstUrl = first.video_url || first.stream_url;
+          if (firstUrl) {
+            playVideo(firstUrl, first.title);
+          }
+        }
+
+      } catch (e) {
+        console.warn('Failed loading content:', e);
+        document.getElementById('contentSections').innerHTML = '<div style="padding:20px;text-align:center;color:#b5b5b5">Failed to load content. Please refresh.</div>';
+      }
+    })();
+
+    function setupRowNavigation() {
+      const ROW_SCROLL = 600;
+      document.querySelectorAll('[data-row]').forEach((wrap) => {
+        const row = wrap.querySelector('.row');
+        const left = wrap.querySelector('.arrow.left');
+        const right = wrap.querySelector('.arrow.right');
+
+        if (!row || !left || !right) return;
+
+        left.addEventListener('click', () => row.scrollBy({ left: -ROW_SCROLL, behavior: 'smooth' }));
+        right.addEventListener('click', () => row.scrollBy({ left: ROW_SCROLL, behavior: 'smooth' }));
+
+        const toggle = () => {
+          const max = row.scrollWidth - row.clientWidth - 2;
+          left.style.visibility = row.scrollLeft <= 2 ? 'hidden' : 'visible';
+          right.style.visibility = row.scrollLeft >= max ? 'hidden' : 'visible';
+        };
+        row.addEventListener('scroll', toggle, { passive: true });
+        window.addEventListener('resize', toggle);
+        toggle();
+
+        // Drag to scroll
+        let isDown = false, startX = 0, startLeft = 0;
+        row.addEventListener('pointerdown', (e) => {
+          isDown = true; startX = e.clientX; startLeft = row.scrollLeft; row.setPointerCapture(e.pointerId);
+        });
+        row.addEventListener('pointermove', (e) => {
+          if(!isDown) return; row.scrollLeft = startLeft - (e.clientX - startX);
+        });
+        row.addEventListener('pointerup', () => { isDown = false; });
+        row.addEventListener('pointercancel', () => { isDown = false; });
+      });
+    }
+
+    // Anti-piracy
+    document.addEventListener('keydown', (e) => {
+      const block = (e.ctrlKey && (e.key === 's' || e.key === 'S' || e.key === 'p' || e.key === 'P')) || (e.key === 'PrintScreen');
+      if (block) { e.preventDefault(); e.stopPropagation(); }
+    });
+
+    // Update timestamp
+    setInterval(() => {
+      const ts = document.getElementById('timestamp');
+      if (ts) ts.textContent = new Date().toLocaleTimeString();
+    }, 1000);
+
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>

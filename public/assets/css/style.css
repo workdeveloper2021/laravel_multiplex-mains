@@ -1,0 +1,92 @@
+body {
+    margin: 0;
+    font-family: 'Segoe UI', sans-serif;
+    background: #f0f0f0;
+    display: flex;
+}
+.sidebar {
+    width: 220px;
+    background: #fa4b2a;
+    color: #fff;
+    min-height: 100vh;
+    padding: 20px 10px;
+}
+.sidebar h2 {
+    font-size: 20px;
+    margin-bottom: 20px;
+}
+.sidebar ul {
+    list-style: none;
+    padding: 0;
+}
+.sidebar ul li {
+    padding: 10px;
+    font-size: 14px;
+    cursor: pointer;
+}
+.sidebar ul li i {
+    margin-right: 10px;
+}
+.main-content {
+    flex: 1;
+    padding: 0;
+}
+.topbar {
+    background: #fff;
+    padding: 15px 20px;
+    font-size: 20px;
+    font-weight: 600;
+    border-bottom: 1px solid #ddd;
+}
+.content {
+    padding: 20px;
+}
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+    gap: 15px;
+}
+.card {
+    display: flex;
+    padding: 15px;
+    background: white;
+    border-radius: 6px;
+    align-items: center;
+}
+.card.orange {
+    background: #fa4b2a;
+    color: #fff;
+}
+.card.yellow {
+    background: #ffc107;
+    color: #000;
+}
+.card.teal {
+    background: #17a2b8;
+    color: #fff;
+}
+.card.red {
+    background: #dc3545;
+    color: #fff;
+}
+.card.blue {
+    background: #007bff;
+    color: #fff;
+}
+.card.white {
+    background: #fff;
+    color: #000;
+    border: 1px solid #ddd;
+}
+.icon {
+    font-size: 28px;
+    margin-right: 15px;
+}
+.details .title {
+    font-size: 13px;
+    font-weight: 500;
+}
+.details .value {
+    font-size: 18px;
+    font-weight: bold;
+}
